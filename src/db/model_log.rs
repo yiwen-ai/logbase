@@ -8,8 +8,9 @@ use crate::db::scylladb;
 pub struct Log {
     pub uid: xid::Id,
     pub id: xid::Id,
-    pub gid: xid::Id,
     pub action: i8,
+    pub status: i8,
+    pub gid: xid::Id,
     pub ip: String,
     pub payload: Vec<u8>,
     pub tokens: i32,
@@ -41,6 +42,10 @@ impl Log {
 
         let mut select_fields = select_fields;
         let field = "action".to_string();
+        if !select_fields.contains(&field) {
+            select_fields.push(field);
+        }
+        let field = "status".to_string();
         if !select_fields.contains(&field) {
             select_fields.push(field);
         }
@@ -85,7 +90,14 @@ impl Log {
         db: &scylladb::ScyllaDB,
         cols: ColumnsMap,
     ) -> anyhow::Result<bool> {
-        let valid_fields = vec!["gid", "action", "ip", "payload", "tokens", "error"];
+        let valid_fields = vec![
+            "status", "gid", "action", "ip", "payload", "tokens", "error",
+        ];
+
+        let res = self.get_one(db, vec!["status".to_string()]).await;
+        if res.is_ok() && self.status != 0 {
+            return Err(HTTPError::new(400, "log is frozen".to_string()).into());
+        }
 
         let mut set_fields: Vec<String> = Vec::with_capacity(cols.len());
         let mut params: Vec<CqlValue> = Vec::with_capacity(cols.len() + 4);
@@ -129,7 +141,7 @@ impl Log {
                 db.execute_paged(query, params, None).await?
             } else {
                 let query = scylladb::Query::new(format!(
-                    "SELECT {} FROM log WHERE uid=? AND id<? AND action=? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
+                    "SELECT {} FROM log WHERE uid=? AND action=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
                     fields.clone().join(","))).with_page_size(page_size as i32);
                 let params = (uid.to_cql(), id.to_cql(), action.unwrap(), page_size as i32);
                 db.execute_paged(query, params, None).await?
@@ -179,7 +191,7 @@ impl Log {
         id.0[0..=3].copy_from_slice(&unix_ts.to_be_bytes());
 
         let query = scylladb::Query::new(format!(
-            "SELECT {} FROM log WHERE uid=? AND id>? AND action IN ({})  LIMIT ? ALLOW FILTERING BYPASS CACHE USING TIMEOUT 3s",
+            "SELECT {} FROM log WHERE uid=? AND id>? AND action IN ({}) LIMIT ? ALLOW FILTERING BYPASS CACHE USING TIMEOUT 3s",
             fields.clone().join(","),
             actions.iter().map(|_| "?").collect::<Vec<&str>>().join(",")
         ))
@@ -212,7 +224,6 @@ impl Log {
 
 #[cfg(test)]
 mod tests {
-    use std::{vec};
     use tokio::sync::OnceCell;
 
     use crate::conf;

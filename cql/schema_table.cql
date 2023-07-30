@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS log (
     uid      BLOB,     -- user id, 12 bytes, https://docs.rs/xid/latest/xid/
     id       BLOB,     -- log id
     action   TINYINT,  -- log action
+    status   TINYINT,  -- log status, -1: failed, 0: processing, 1: success
     gid      BLOB,     -- group id
     ip       TEXT,     -- ip address
     payload  BLOB,     -- a well pruned content in CBOR format

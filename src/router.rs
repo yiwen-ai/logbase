@@ -27,9 +27,13 @@ pub async fn new(cfg: conf::Conf) -> anyhow::Result<(Arc<api::AppState>, Router)
         .nest(
             "/v1/log",
             Router::new()
-                .route("/", routing::post(api::log::create).get(api::log::get))
-                .route("/update_error", routing::get(api::log::update_error))
-                .route("/list_recently", routing::get(api::log::list_recently)),
+                .route(
+                    "/",
+                    routing::post(api::log::create)
+                        .get(api::log::get)
+                        .patch(api::log::update),
+                )
+                .route("/list_recently", routing::post(api::log::list_recently)),
         )
         .route_layer(mds)
         .with_state(app_state.clone());

@@ -20,6 +20,7 @@ pub struct LogOutput {
     pub uid: PackObject<xid::Id>,
     pub id: PackObject<xid::Id>,
     pub action: String,
+    pub status: i8,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gid: Option<PackObject<xid::Id>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,6 +39,7 @@ impl LogOutput {
             uid: to.with(val.uid),
             id: to.with(val.id),
             action: action::from_action(val.action),
+            status: val.status,
             ..Default::default()
         };
 
@@ -47,7 +49,13 @@ impl LogOutput {
                 "ip" => rt.ip = Some(val.ip.to_owned()),
                 "payload" => rt.payload = Some(to.with(val.payload.to_owned())),
                 "tokens" => rt.tokens = Some(val.tokens as u32),
-                "error" => rt.error = Some(val.error.to_owned()),
+                "error" => {
+                    rt.error = if val.error.is_empty() {
+                        None
+                    } else {
+                        Some(val.error.to_owned())
+                    }
+                }
                 _ => {}
             }
         }
@@ -84,6 +92,8 @@ pub struct CreateLogInput {
     pub uid: PackObject<xid::Id>,
     pub gid: PackObject<xid::Id>,
     pub action: String,
+    #[validate(range(min = -1, max = 1))]
+    pub status: i8,
     pub ip: String,
     pub payload: PackObject<Vec<u8>>,
     #[validate(range(min = 0))]
@@ -117,25 +127,45 @@ pub async fn create(
 }
 
 #[derive(Debug, Deserialize, Validate)]
-pub struct UpdateLogErrorInput {
+pub struct UpdateLogInput {
     pub uid: PackObject<xid::Id>,
     pub id: PackObject<xid::Id>,
-    pub error: String,
+    pub status: i8,
+    pub payload: Option<PackObject<Vec<u8>>>,
+    #[validate(range(min = 0))]
+    pub tokens: Option<i32>,
+    pub error: Option<String>,
 }
 
-pub async fn update_error(
+pub async fn update(
     State(app): State<Arc<AppState>>,
     Extension(ctx): Extension<Arc<ReqContext>>,
-    to: PackObject<UpdateLogErrorInput>,
+    to: PackObject<UpdateLogInput>,
 ) -> Result<PackObject<SuccessResponse<LogOutput>>, HTTPError> {
     let (to, input) = to.unpack();
     input.validate()?;
 
-    ctx.set_kvs(vec![("action", "update_log_error".into())])
-        .await;
+    if input.status != -1 && input.status != 1 {
+        return Err(HTTPError::new(
+            400,
+            format!("invalid status, expected -1 or 1, got {}", input.status),
+        ));
+    }
+
+    ctx.set_kvs(vec![("action", "update_log".into())]).await;
     let mut doc = db::Log::with_pk(input.uid.unwrap(), input.id.unwrap());
-    let mut cols: ColumnsMap = ColumnsMap::with_capacity(1);
-    cols.set_as("error", &input.error);
+    let mut cols: ColumnsMap = ColumnsMap::with_capacity(3);
+    cols.set_as("status", &input.status);
+    if input.payload.is_some() {
+        cols.set_as("payload", &input.payload.unwrap().unwrap());
+    }
+    if input.tokens.is_some() {
+        cols.set_as("tokens", &input.tokens.unwrap());
+    }
+    if input.error.is_some() {
+        cols.set_as("error", &input.error.unwrap());
+    }
+
     doc.upsert_fields(&app.scylla, cols).await?;
     Ok(to.with(SuccessResponse::new(LogOutput::from(doc, &to))))
 }
@@ -144,7 +174,7 @@ pub async fn update_error(
 pub struct ListRecentlyInput {
     pub uid: PackObject<xid::Id>,
     #[validate(length(min = 1, max = 10))]
-    pub actions: Vec<i8>,
+    pub actions: Vec<String>,
     pub fields: Option<Vec<String>>,
 }
 
@@ -156,12 +186,19 @@ pub async fn list_recently(
     let (to, input) = to.unpack();
     input.validate()?;
 
+    let mut actions: Vec<i8> = Vec::with_capacity(input.actions.len());
+    for a in input.actions.iter() {
+        let i = action::to_action(a)
+            .ok_or_else(|| HTTPError::new(400, format!("invalid action {}", a)))?;
+        actions.push(i);
+    }
+
     ctx.set_kvs(vec![("action", "list_recently".into())]).await;
     let res = db::Log::list_recently(
         &app.scylla,
         input.uid.unwrap(),
         input.fields.unwrap_or_default(),
-        input.actions,
+        actions,
     )
     .await?;
     Ok(to.with(SuccessResponse::new(
