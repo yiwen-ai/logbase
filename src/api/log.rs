@@ -116,7 +116,7 @@ pub async fn create(
     let mut doc = db::Log::with_pk(input.uid.unwrap(), xid::new());
     let mut cols: ColumnsMap = ColumnsMap::with_capacity(5);
     doc.action = i;
-    cols.set_as("action", &input.action);
+    cols.set_as("action", &i);
     cols.set_as("gid", &input.gid.unwrap());
     cols.set_as("ip", &input.ip);
     cols.set_as("payload", &input.payload.unwrap());
