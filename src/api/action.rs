@@ -40,7 +40,7 @@ const ACTIONS: [&str; 72] = [
     "reserved",
     "reserved",
     "creation.create",
-    "creation.create.uploading",
+    "creation.create.converting",
     "creation.create.scraping",
     "creation.update",
     "creation.update.content",
@@ -85,8 +85,6 @@ pub fn to_action(a: &str) -> Option<i8> {
     if a == "reserved" {
         None
     } else {
-        ACTIONS
-            .iter()
-            .position(|&x| x == a).map(|x| x as i8)
+        ACTIONS.iter().position(|&x| x == a).map(|x| x as i8)
     }
 }
