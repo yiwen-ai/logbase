@@ -132,34 +132,31 @@ impl Log {
 
         let rows = if let Some(id) = page_token {
             if action.is_none() {
-                let query = scylladb::Query::new(format!(
+                let query = format!(
                     "SELECT {} FROM log WHERE uid=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
                     fields.clone().join(",")
-                ))
-                .with_page_size(page_size as i32);
+                );
                 let params = (uid.to_cql(), id.to_cql(), page_size as i32);
-                db.execute_paged(query, params, None).await?
+                db.execute_iter(query, params).await?
             } else {
-                let query = scylladb::Query::new(format!(
+                let query = format!(
                     "SELECT {} FROM log WHERE uid=? AND action=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
-                    fields.clone().join(","))).with_page_size(page_size as i32);
+                    fields.clone().join(","));
                 let params = (uid.to_cql(), id.to_cql(), action.unwrap(), page_size as i32);
-                db.execute_paged(query, params, None).await?
+                db.execute_iter(query, params).await?
             }
         } else if action.is_none() {
-            let query = scylladb::Query::new(format!(
+            let query = format!(
                 "SELECT {} FROM log WHERE uid=? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
                 fields.clone().join(",")
-            ))
-            .with_page_size(page_size as i32);
+            );
             let params = (uid.to_cql(), page_size as i32);
             db.execute_iter(query, params).await?
         } else {
-            let query = scylladb::Query::new(format!(
+            let query = format!(
                 "SELECT {} FROM log WHERE uid=? AND action=? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
                 fields.clone().join(",")
-            ))
-            .with_page_size(page_size as i32);
+            );
             let params = (uid.as_bytes(), action.unwrap(), page_size as i32);
             db.execute_iter(query, params).await?
         };
@@ -190,12 +187,11 @@ impl Log {
         let mut id = xid::Id::default();
         id.0[0..=3].copy_from_slice(&unix_ts.to_be_bytes());
 
-        let query = scylladb::Query::new(format!(
+        let query = format!(
             "SELECT {} FROM log WHERE uid=? AND id>? AND action IN ({}) LIMIT ? ALLOW FILTERING BYPASS CACHE USING TIMEOUT 3s",
             fields.clone().join(","),
             actions.iter().map(|_| "?").collect::<Vec<&str>>().join(",")
-        ))
-        .with_page_size(1000_i32);
+        );
 
         let mut params: Vec<CqlValue> = Vec::with_capacity(actions.len() + 3);
         params.push(uid.to_cql());
@@ -204,7 +200,7 @@ impl Log {
             params.push(a.to_cql());
         }
         params.push(1000_i32.to_cql());
-        let rows = db.execute_paged(query, params, None).await?;
+        let rows = db.execute_iter(query, params).await?;
 
         let mut res: Vec<Log> = Vec::with_capacity(rows.len());
         for row in rows {
