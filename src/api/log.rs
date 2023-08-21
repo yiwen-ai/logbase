@@ -117,6 +117,7 @@ pub async fn create(
     let mut cols: ColumnsMap = ColumnsMap::with_capacity(5);
     doc.action = i;
     cols.set_as("action", &i);
+    cols.set_as("status", &input.status);
     cols.set_as("gid", &input.gid.unwrap());
     cols.set_as("ip", &input.ip);
     cols.set_as("payload", &input.payload.unwrap());
