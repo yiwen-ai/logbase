@@ -2,7 +2,7 @@ use axum_web::{context::unix_ms, erring::HTTPError};
 use scylla_orm::{ColumnsMap, CqlValue, ToCqlVal};
 use scylla_orm_macros::CqlOrm;
 
-use crate::db::scylladb;
+use crate::db::{scylladb, MAX_ID};
 
 #[derive(Debug, Default, Clone, CqlOrm)]
 pub struct Log {
@@ -129,35 +129,29 @@ impl Log {
         action: Option<i8>,
     ) -> anyhow::Result<Vec<Log>> {
         let fields = Self::select_fields(select_fields, true)?;
+        let token = if page_token.is_none() {
+            MAX_ID
+        } else {
+            page_token.unwrap()
+        };
 
-        let rows = if let Some(id) = page_token {
-            if action.is_none() {
-                let query = format!(
-                    "SELECT {} FROM log WHERE uid=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
-                    fields.clone().join(",")
-                );
-                let params = (uid.to_cql(), id.to_cql(), page_size as i32);
-                db.execute_iter(query, params).await?
-            } else {
-                let query = format!(
-                    "SELECT {} FROM log WHERE uid=? AND action=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
-                    fields.clone().join(","));
-                let params = (uid.to_cql(), id.to_cql(), action.unwrap(), page_size as i32);
-                db.execute_iter(query, params).await?
-            }
-        } else if action.is_none() {
+        let rows = if action.is_none() {
             let query = format!(
-                "SELECT {} FROM log WHERE uid=? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
+                "SELECT {} FROM log WHERE uid=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
                 fields.clone().join(",")
             );
-            let params = (uid.to_cql(), page_size as i32);
+            let params = (uid.to_cql(), token.to_cql(), page_size as i32);
             db.execute_iter(query, params).await?
         } else {
             let query = format!(
-                "SELECT {} FROM log WHERE uid=? AND action=? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
-                fields.clone().join(",")
+                    "SELECT {} FROM log WHERE uid=? AND action=? AND id<? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
+                    fields.clone().join(","));
+            let params = (
+                uid.to_cql(),
+                token.to_cql(),
+                action.unwrap(),
+                page_size as i32,
             );
-            let params = (uid.as_bytes(), action.unwrap(), page_size as i32);
             db.execute_iter(query, params).await?
         };
 
@@ -187,20 +181,33 @@ impl Log {
         let mut id = xid::Id::default();
         id.0[0..=3].copy_from_slice(&unix_ts.to_be_bytes());
 
-        let query = format!(
-            "SELECT {} FROM log WHERE uid=? AND id>? AND action IN ({}) LIMIT ? ALLOW FILTERING BYPASS CACHE USING TIMEOUT 3s",
-            fields.clone().join(","),
-            actions.iter().map(|_| "?").collect::<Vec<&str>>().join(",")
-        );
+        let rows = if actions.is_empty() {
+            let query = format!(
+                "SELECT {} FROM log WHERE uid=? AND id>? LIMIT ? BYPASS CACHE USING TIMEOUT 3s",
+                fields.clone().join(","),
+            );
 
-        let mut params: Vec<CqlValue> = Vec::with_capacity(actions.len() + 3);
-        params.push(uid.to_cql());
-        params.push(id.to_cql());
-        for a in &actions {
-            params.push(a.to_cql());
-        }
-        params.push(1000_i32.to_cql());
-        let rows = db.execute_iter(query, params).await?;
+            let mut params: Vec<CqlValue> = Vec::with_capacity(3);
+            params.push(uid.to_cql());
+            params.push(id.to_cql());
+            params.push(1000_i32.to_cql());
+            db.execute_iter(query, params).await?
+        } else {
+            let query = format!(
+                "SELECT {} FROM log WHERE uid=? AND id>? AND action IN ({}) LIMIT ? ALLOW FILTERING BYPASS CACHE USING TIMEOUT 3s",
+                fields.clone().join(","),
+                actions.iter().map(|_| "?").collect::<Vec<&str>>().join(",")
+            );
+
+            let mut params: Vec<CqlValue> = Vec::with_capacity(actions.len() + 3);
+            params.push(uid.to_cql());
+            params.push(id.to_cql());
+            for a in &actions {
+                params.push(a.to_cql());
+            }
+            params.push(1000_i32.to_cql());
+            db.execute_iter(query, params).await?
+        };
 
         let mut res: Vec<Log> = Vec::with_capacity(rows.len());
         for row in rows {

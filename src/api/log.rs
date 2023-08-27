@@ -174,7 +174,7 @@ pub async fn update(
 #[derive(Debug, Deserialize, Validate)]
 pub struct ListRecentlyInput {
     pub uid: PackObject<xid::Id>,
-    #[validate(length(min = 1, max = 10))]
+    #[validate(length(min = 0, max = 10))]
     pub actions: Vec<String>,
     pub fields: Option<Vec<String>>,
 }
