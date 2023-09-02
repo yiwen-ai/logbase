@@ -219,7 +219,7 @@ impl Log {
             res.push(doc);
         }
 
-        res.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap());
+        // res.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap());
 
         Ok(res)
     }
