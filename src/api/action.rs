@@ -16,7 +16,7 @@ const ACTIONS: [&str; 72] = [
     "user.follow",
     "user.subscribe",
     "user.sponsor",
-    "reserved",
+    "user.topup",
     "reserved",
     "reserved",
     "reserved",

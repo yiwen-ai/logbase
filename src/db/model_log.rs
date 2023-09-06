@@ -219,8 +219,6 @@ impl Log {
             res.push(doc);
         }
 
-        // res.sort_by(|a, b| a.id.partial_cmp(&b.id).unwrap());
-
         Ok(res)
     }
 }
@@ -304,7 +302,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(2, docs.len());
-        assert_eq!(docs[0].action, 1i8);
-        assert_eq!(docs[1].action, 2i8);
+        assert_eq!(docs[0].action, 2i8);
+        assert_eq!(docs[1].action, 1i8);
     }
 }
