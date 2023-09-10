@@ -12,7 +12,7 @@ const ACTIONS: [&str; 72] = [
     "user.update",
     "user.update.cn",
     "user.logout",
-    "user.collect",
+    "user.bookmark",
     "user.follow",
     "user.subscribe",
     "user.sponsor",
